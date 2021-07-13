@@ -21,12 +21,14 @@ class VideoRecorder(object):
 
     def record(self, env):
         if self.enabled:
+            # import pdb; pdb.set_trace()
             frame = env.render(mode='rgb_array',
                                height=self.height,
                                width=self.width)
-            self.frames.append(frame)
+            self.frames.append(frame.transpose(1, 2, 0))
 
     def save(self, file_name):
         if self.enabled:
             path = os.path.join(self.save_dir, file_name)
+            # import pdb; pdb.set_trace()
             imageio.mimsave(path, self.frames, fps=self.fps)

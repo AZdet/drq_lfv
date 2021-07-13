@@ -16,34 +16,40 @@ import utils
 from logger import Logger
 from replay_buffer import ReplayBuffer
 from video import VideoRecorder
-
+from metaworld.envs.mujoco.sawyer_xyz.v2.sawyer_microwave_v2 import SawyerMicrowaveEnvV2
 torch.backends.cudnn.benchmark = True
 
 
 def make_env(cfg):
     """Helper function to create dm_control environment"""
-    if cfg.env == 'ball_in_cup_catch':
-        domain_name = 'ball_in_cup'
-        task_name = 'catch'
-    elif cfg.env == 'point_mass_easy':
-        domain_name = 'point_mass'
-        task_name = 'easy'
+    # import pdb; pdb.set_trace()
+    if cfg.env == 'microwave':
+        env = SawyerMicrowaveEnvV2()
+        # import pdb; pdb.set_trace()
+        env._max_episode_steps = 150
     else:
-        domain_name = cfg.env.split('_')[0]
-        task_name = '_'.join(cfg.env.split('_')[1:])
+        if cfg.env == 'ball_in_cup_catch':
+            domain_name = 'ball_in_cup'
+            task_name = 'catch'
+        elif cfg.env == 'point_mass_easy':
+            domain_name = 'point_mass'
+            task_name = 'easy'
+        else:
+            domain_name = cfg.env.split('_')[0]
+            task_name = '_'.join(cfg.env.split('_')[1:])
 
-    # per dreamer: https://github.com/danijar/dreamer/blob/02f0210f5991c7710826ca7881f19c64a012290c/wrappers.py#L26
-    camera_id = 2 if domain_name == 'quadruped' else 0
+        # per dreamer: https://github.com/danijar/dreamer/blob/02f0210f5991c7710826ca7881f19c64a012290c/wrappers.py#L26
+        camera_id = 2 if domain_name == 'quadruped' else 0
 
-    env = dmc2gym.make(domain_name=domain_name,
-                       task_name=task_name,
-                       seed=cfg.seed,
-                       visualize_reward=False,
-                       from_pixels=True,
-                       height=cfg.image_size,
-                       width=cfg.image_size,
-                       frame_skip=cfg.action_repeat,
-                       camera_id=camera_id)
+        env = dmc2gym.make(domain_name=domain_name,
+                        task_name=task_name,
+                        seed=cfg.seed,
+                        visualize_reward=False,
+                        from_pixels=True,
+                        height=cfg.image_size,
+                        width=cfg.image_size,
+                        frame_skip=cfg.action_repeat,
+                        camera_id=camera_id)
 
     env = utils.FrameStack(env, k=cfg.frame_stack)
 
@@ -103,6 +109,12 @@ class Workspace(object):
                 self.video_recorder.record(self.env)
                 episode_reward += reward
                 episode_step += 1
+                if episode_step == self.env._max_episode_steps:
+                    print('step limit')
+                    done = True
+                elif info['success'] == True:
+                    print('success')
+                    done = True
 
             average_episode_reward += episode_reward
             self.video_recorder.save(f'{self.step}.mp4')
@@ -154,14 +166,19 @@ class Workspace(object):
 
             next_obs, reward, done, info = self.env.step(action)
 
+            # metaworld don't have a real Done in itself
+            done = info['success']
+
             # allow infinite bootstrap
             done = float(done)
+            # import pdb; pdb.set_trace()
             done_no_max = 0 if episode_step + 1 == self.env._max_episode_steps else done
             episode_reward += reward
 
             self.replay_buffer.add(obs, action, reward, next_obs, done,
                                    done_no_max)
-
+            
+            
             obs = next_obs
             episode_step += 1
             self.step += 1
